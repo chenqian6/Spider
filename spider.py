@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException,NoSuchElementException
 import time
 import pymysql
 from multiprocessing import Pool
@@ -12,90 +13,128 @@ except:
     assert 0
 coursor = connection.cursor()#获取一个游标对象
 try:
-    coursor.execute("create table if not exists sstime (id INT NOT NULL UNIQUE ,shuo_time text,qzone_link text)")#在数据库中创建一个名为sstime的表
+    coursor.execute("create table if not exists monthtime (id INT NOT NULL UNIQUE auto_increment,qq text,shuo_time text)")#在数据库中创建一个名为monthtime的表
 except:
     print("创建表失败")
     assert 0
 
-#定义函数来保存说说信息到数据库
-def save_to_database(the_list,shuo_time,qzone_link):
+#将数据存储到数据库monthtime表中
+def save_to_db(qqnumber,shuoshuo_time):
     try:
-        coursor.execute("insert into sstime (id,shuo_time,qzone_link) VALUES (%d,'%s','%s');" % (the_list, shuo_time, qzone_link))
+        coursor.execute("insert into monthtime (qq,shuo_time) VALUES ('%s','%s');" % (qqnumber, shuoshuo_time))
         connection.commit()
-        the_list += 1
     except:
-        print("第%d条说说信息保存到数据库失败" % the_list)
+        pass
 
-#模拟登陆
-def register_qzone():
-    driver = webdriver.PhantomJS(executable_path="D:\Anaconda\python2.7\phantomjs.exe")
-    driver.set_window_position(20, 40)
-    driver.set_window_size(1100, 700)
-    driver.get("http://qzone.qq.com")
-    driver.switch_to.frame("login_frame")
-    driver.find_element_by_id("switcher_plogin").click()
-    driver.find_element_by_id("u").clear()
-    driver.find_element_by_id("u").send_keys("qq")
-    driver.find_element_by_id("p").clear()
-    driver.find_element_by_id("p").send_keys("qq密码")
-    driver.find_element_by_id("login_button").click()
-    time.sleep(3)
-    driver.find_element_by_id("tab_menu_friend").find_element_by_class_name("qz-main").click()
-    time.sleep(3)
-    return driver
-order = 1#创建一个全局变量来标示序号
-#抓取前四个说说时间
-def get_first_four(driver,the_list):
-    for first_four in range(1,7):
-        try:
-            first_four_time = driver.find_element_by_xpath(
-                "//li[%d][@class = 'f-single f-s-s']//div[@class = 'user-info']//div[@class = 'info-detail']" % first_four).text
-            first_four_qzone_link = driver.find_element_by_xpath(
-                "//li[%d][@class = 'f-single f-s-s']//div[@class = 'user-info']//div[@class = 'f-nick']/a[1]" % first_four).get_attribute("href")
-            print(the_list, first_four_time, first_four_qzone_link)
-            save_to_database(the_list, first_four_time, first_four_qzone_link)
-        except:
-            pass
+#模拟登陆到自己的空间
+driver = webdriver.Chrome()
+#driver = webdriver.PhantomJS(executable_path="D:\Anaconda\python2.7\phantomjs.exe")
+driver.set_window_position(20, 40)
+driver.set_window_size(1100,700)
 
+driver.get("http://qzone.qq.com")
+driver.switch_to.frame("login_frame")
+driver.find_element_by_id("switcher_plogin").click()
+driver.find_element_by_id("u").clear()
+driver.find_element_by_id("u").send_keys("qq")
+driver.find_element_by_id("p").clear()
+driver.find_element_by_id("p").send_keys("qq密码")
+driver.find_element_by_id("login_button").click()
+time.sleep(3)
 
-#抓取后面的说说时间
-def get_four_turn(driver,the_list,tot=0):
-    time.sleep(3)
+#下拉函数
+def drop_down():
     js = "window.scrollTo(0,document.body.scrollHeight)"#JavaScript中的下拉指令
     driver.execute_script(js)
     time.sleep(2)
-    driver.execute_script(js)
-    time.sleep(2)
 
-    #tot = 3   #每次下拉出现四个新的信息
-    while(tot):
-        for four_turn in range(1,5):
-            try:
-                four_turn_time = driver.find_element_by_xpath(
-                    "//li[@class = 'feed_page_container']/ul[1]/li[%d]//div[@class = 'info-detail']" % four_turn).text
-                four_turn_qzone_link = driver.find_element_by_xpath(
-                    "//li[@class = 'feed_page_container']/ul[1]/li[%d]//div[@class = 'f-nick']/a[1]" % four_turn).get_attribute("href")
-                print(the_list, four_turn_time, four_turn_qzone_link)
-                save_to_database(the_list, four_turn_time, four_turn_qzone_link)
-            except :
-                pass
-        tot -= 1
-        js = "window.scrollTo(0,document.body.scrollHeight)"  # JavaScript中的下拉指令
-        driver.execute_script(js)
-        time.sleep(3)
+#进入好友说说页面并获取总的说说页面数
+def shuoshuo_total(qqnumber):
+    try:
+        # 进入好友的说说页面
+        driver.get("https://user.qzone.qq.com/{}/311".format(qqnumber))
+        time.sleep(2)
+        print("正在进入%s的说说页面" % qqnumber)
+        #判断是否有权限进入
+        try:
+            driver.find_element_by_class_name("apply_access access_option")
+                                    #如果没有权限，页面会有一个元素为class = apply_access access_option
+            a = False
+            #driver.quit()
+        except NoSuchElementException:#有权限进入就找不到那个元素，程序发生异常：NoSuchElementException
+            a = True
 
-#断开数据库的连接
-def close_database(driver):
-    coursor.close()#关闭游标
-    connection.close()#关闭到数据库的连接，释放数据库资源
-    #关闭网页
+        if a == True:
+            # 将页面拉到底部获取说说总页数
+            drop_down()
+            drop_down()
+            time.sleep(2)
+            driver.switch_to.frame("app_canvas_frame")
+            total_page = int(driver.find_element_by_xpath("//a[@title = '末页']").text)
+            return total_page
+    except TimeoutException:#程序运行过程中由于网络原因极容易发生超时异常，此时只需要再重新加载一遍就可以
+        return shuoshuo_total(qqnumber)
+
+#跳转到指定的说说页面
+def enter_shuoshuo(page):
+    print("进入说说第%s页" % page)
+    try:
+        # 输入页面
+        driver.find_element_by_xpath("//span[@class = 'mod_pagenav_turn']/input").clear()
+        driver.find_element_by_xpath("//span[@class = 'mod_pagenav_turn']/input").send_keys(page)
+        driver.find_element_by_xpath("//span[@class = 'mod_pagenav_turn']/button").click()
+        time.sleep(2)
+        print("进入成功")
+    except:
+        print("进入失败，再次尝试")
+        return enter_shuoshuo(page)
+
+#通过QQ号获取好友说说信息
+def get_shuoshuo_information(qqnumber):
+    try:
+        total_page = shuoshuo_total(qqnumber)
+        #开始获取好友说说信息
+        for page in range(1,total_page+1):
+            enter_shuoshuo(page)
+            #获取说说时间信息
+            for i in range(1,30):
+                try:
+                    shuoshuo_time = driver.find_element_by_xpath("//li[%d]//div[@class = 'box bgr3']//div[@class = 'ft']/div/span" % i).text
+                    #将说说信息存储到数据库
+                    save_to_db(qqnumber,shuoshuo_time)
+                except:
+                    break
+
+    except:
+        pass
+
+
+def main(qqnumber):
+    get_shuoshuo_information(qqnumber)
+
+if __name__ == '__main__':
+    #获取QQ号
+    inpath = 'QQ号.txt'
+    uipath = unicode(inpath, "utf8")#由于存在中文，所以需要编译一下
+    f = open(uipath)
+    #读取信息
+    # for qq in f:
+    #     main(qq)
+    pool = Pool()
+    pool.map(main,[qq for qq in f])
+
+    #所有好友说说信息读取完毕，关闭文件
+    f.close()
+    # 断开数据库的连接
+    coursor.close()  # 关闭游标
+    connection.close()  # 关闭到数据库的连接，释放数据库资源
+    # 关闭网页
     driver.quit()
 
-def main(total):
-    dri = register_qzone()
-    get_first_four(dri,order)
-    get_four_turn(dri,order,total)
-    close_database(dri)
-
-if __name__ == "__main__":
-    main(5)
+    # pool = Pool()
+    # pool.map(main,[qq for qq in f])
+#断开数据库的连接
+# coursor.close()#关闭游标
+# connection.close()#关闭到数据库的连接，释放数据库资源
+#关闭网页
+#driver.quit()

@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/multiprocess_qzone_spider.iml" filepath="$PROJECT_DIR$/.idea/multiprocess_qzone_spider.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/spiderlast.iml" filepath="$PROJECT_DIR$/.idea/spiderlast.iml" />
     </modules>
   </component>
 </project>
